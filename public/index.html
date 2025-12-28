@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">                                                                          <head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>ConTok</title>
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    body {                                                                                      margin: 0;
+      background-color: #000;
+      color: yellow;
+      font-family: sans-serif;
+    }
+
+    /* Upload bar */
+    #uploadBar {
+      position: sticky;
+      top: 0;                                                                                   background: #111;
+      padding: 10px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      z-index: 10;
+    }
+
+    #uploadBar input[type="file"] {
+      flex: 1;
+      color: white;
+    }
+
+    #uploadBar button {
+      padding: 6px 12px;
+      background: #06c;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      font-size: 14px;
+    }
+
+    #videoContainer {
+      height: calc(100vh - 60px);
+      overflow-y: scroll;
+      scroll-snap-type: y mandatory;
+    }
+
+    .video-wrapper {
+      height: 100vh;
+      scroll-snap-align: start;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      background: black;
+      padding: 10px;
+    }
+
+    video {
+      width: 100%;
+      max-height: 100%;
+      border-radius: 8px;
+      outline: none;
+    }
+
+    @media (min-width: 600px) {
+      video {
+        width: auto;
+        max-width: 100%;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Upload UI -->
+  <form id="uploadForm" enctype="multipart/form-data">
+    <div id="uploadBar">
+      <input type="file" name="videos" id="videoInput" multiple accept="video/mp4,video/webm,video/quicktime" />
+      <button type="submit">Upload</button>
+    </div>
+  </form>
+
+  <!-- Videos container -->
+  <div id="videoContainer"></div>
+
+  <script>
+    let videoList = [];
+    let currentIndex = 0;
+
+    function shuffleArray(array) {
+      for (let i = array.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [array[i], array[j]] = [array[j], array[i]];
+      }
+      return array;
+    }
+
+    async function loadVideos() {
+      try {
+        const res = await fetch('/api/videos');
+        videoList = shuffleArray(await res.json());
+        if (videoList.length > 0) {
+          loadNextVideo();
+        }
+      } catch (err) {
+        console.error('Error loading videos:', err);
+      }
+    }
+
+    function loadNextVideo() {
+      if (currentIndex >= videoList.length) return;
+
+      const container = document.getElementById('videoContainer');
+      const wrapper = document.createElement('div');
+      wrapper.className = 'video-wrapper';
+
+      const video = document.createElement('video');
+      video.src = `/videos/${encodeURIComponent(videoList[currentIndex])}`;
+      video.controls = true;
+      video.muted = false;
+      video.autoplay = false;
+      video.playsInline = true;
+      video.loop = true;
+
+      wrapper.appendChild(video);
+      container.appendChild(wrapper);
+
+      observer.observe(video);
+      currentIndex++;
+    }
+
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        const video = entry.target;
+        if (entry.isIntersecting) {
+          video.play();
+          const index = Array.from(document.querySelectorAll('video')).indexOf(video);
+          if (index === currentIndex - 1) {
+            loadNextVideo();
+          }
+        } else {
+          video.pause();
+        }
+      });
+    }, {
+      threshold: 0.6
+    });
+
+    loadVideos();
+
+    // Upload logic
+    const form = document.getElementById('uploadForm');
+    const input = document.getElementById('videoInput');
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+
+      const files = input.files;
+      if (!files.length) return alert('📂 Please select at least one video.');
+
+      const formData = new FormData();
+      for (const file of files) {
+        formData.append('videos', file);
+      }
+
+      try {
+        const res = await fetch('/upload-multiple', {
+          method: 'POST',
+          body: formData
+        });
+
+        const result = await res.json();
+        alert('✅ Uploaded:\n' + result.uploaded.join('\n'));
+
+        // Reload scroll view
+        currentIndex = 0;
+        document.getElementById('videoContainer').innerHTML = '';
+        loadVideos();
+      } catch (err) {
+        alert('❌ Upload failed');
+        console.error(err);
+      }
+    });
+  </script>
+
+</body>
+</html>
